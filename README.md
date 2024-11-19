@@ -1,9 +1,9 @@
 <img src="https://avatars2.githubusercontent.com/u/2810941?v=3&s=96" alt="Google Cloud Platform logo" title="Google Cloud Platform" align="right" height="96" width="96"/>
 
-# [Release Please](https://github.com/googleapis/release-please)
+# [Release Please](https://github.com/joaquinjsb/release-please)
 
 [![npm version](https://img.shields.io/npm/v/release-please.svg)](https://www.npmjs.org/package/release-please)
-[![codecov](https://img.shields.io/codecov/c/github/googleapis/release-please/main.svg?style=flat)](https://codecov.io/gh/googleapis/release-please)
+[![codecov](https://img.shields.io/codecov/c/github/joaquinjsb/release-please/main.svg?style=flat)](https://codecov.io/gh/joaquinjsb/release-please)
 
 Release Please automates CHANGELOG generation, the creation of GitHub releases,
 and version bumps for your projects.
