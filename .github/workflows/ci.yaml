@@ -69,5 +69,5 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: 18
-      - run: npm install --save googleapis/release-please#${{ github.ref }}
+      - run: npm install --save @joaquinjsb/release-please#${{ github.ref }}
       - run: npm run build
