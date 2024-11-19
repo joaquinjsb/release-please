@@ -3,7 +3,7 @@
 Install release-please globally:
 
 ```bash
-npm i release-please -g
+npm i @joaquinjsb/release-please -g
 ```
 
 ## Global options
