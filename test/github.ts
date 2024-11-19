@@ -35,7 +35,7 @@ import {
 import {fail} from 'assert';
 import {PullRequestBody} from '../src/util/pull-request-body';
 import {PullRequestTitle} from '../src/util/pull-request-title';
-import * as codeSuggester from 'code-suggester';
+import * as codeSuggester from '@joaquinjsb/code-suggester';
 import {RawContent} from '../src/updaters/raw-content';
 import {HttpsProxyAgent} from 'https-proxy-agent';
 import {HttpProxyAgent} from 'http-proxy-agent';

@@ -1,18 +1,22 @@
-// Copyright 2021 Google LLC
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * // Copyright 2020 Google LLC
+ * //
+ * // Licensed under the Apache License, Version 2.0 (the "License");
+ * // you may not use this file except in compliance with the License.
+ * // You may obtain a copy of the License at
+ * //
+ * //     https://www.apache.org/licenses/LICENSE-2.0
+ * //
+ * // Unless required by applicable law or agreed to in writing, software
+ * // distributed under the License is distributed on an "AS IS" BASIS,
+ * // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * // See the License for the specific language governing permissions and
+ * // limitations under the License.
+ * //
+ * //Modifications made by Joaquin Santana on 19/11/24, 11:00
+ */
 
-import {createPullRequest} from 'code-suggester';
+import {createPullRequest} from '@joaquinjsb/code-suggester';
 import {PullRequest} from './pull-request';
 import {Commit} from './commit';
 
@@ -46,10 +50,11 @@ import {
   DEFAULT_FILE_MODE,
   FileNotFoundError as MissingFileError,
 } from '@google-automations/git-file-utils';
-import {Logger} from 'code-suggester/build/src/types';
+import {Logger} from '@joaquinjsb/code-suggester/build/src/types';
 import {HttpsProxyAgent} from 'https-proxy-agent';
 import {HttpProxyAgent} from 'http-proxy-agent';
 import {PullRequestOverflowHandler} from './util/pull-request-overflow-handler';
+import {PullRequestGitea} from "./util/gitea";
 
 // Extract some types from the `request` package.
 type RequestBuilderType = typeof request;
@@ -75,6 +80,8 @@ interface ProxyOption {
 interface GitHubCreateOptions {
   owner: string;
   repo: string;
+  gitUsername?: string;
+  gitPassword?: string;
   defaultBranch?: string;
   apiUrl?: string;
   graphqlUrl?: string;
@@ -120,15 +127,11 @@ interface GraphQLPullRequest {
 
 interface GraphQLRelease {
   name: string;
-  tag: {
-    name: string;
-  };
-  tagCommit: {
-    oid: string;
-  };
+  tag_name: string;
+  target_commitish: string;
   url: string;
-  description: string;
-  isDraft: boolean;
+  body: string;
+  draft: boolean;
 }
 
 interface CommitHistory {
@@ -241,9 +244,9 @@ export class GitHub {
    *   Defaults to the value fetched via the API.
    * @param {string} options.apiUrl Optional. The base url of the GitHub API.
    * @param {string} options.graphqlUrl Optional. The base url of the GraphQL API.
-   * @param {OctokitAPISs} options.octokitAPIs Optional. Override the internal
+   * @param {OctokitAPIs} options.octokitAPIs Optional. Override the internal
    *   client instances with a pre-authenticated instance.
-   * @param {string} token Optional. A GitHub API token used for authentication.
+   * @param {string} options.token Optional. A GitHub API token used for authentication.
    */
   static async create(options: GitHubCreateOptions): Promise<GitHub> {
     const apiUrl = options.apiUrl ?? GH_API_URL;
@@ -280,6 +283,8 @@ export class GitHub {
       repository: {
         owner: options.owner,
         repo: options.repo,
+        gitUsername: options.gitUsername,
+        gitPassword: options.gitPassword,
         defaultBranch:
           options.defaultBranch ??
           (await GitHub.defaultBranch(
@@ -443,14 +448,11 @@ export class GitHub {
       cursor,
       owner: this.repository.owner,
       repo: this.repository.repo,
-      num: 25,
+      limit: options.maxResults,
       targetBranch,
       maxFilesChanged: 100, // max is 100
     };
-    const response = await this.graphqlRequest({
-      query,
-      ...params,
-    });
+    const response = await this.octokit.repos.listCommits({...params});
 
     if (!response) {
       this.logger.warn(
@@ -461,14 +463,41 @@ export class GitHub {
     }
 
     // if the branch does exist, return null
-    if (!response.repository?.ref) {
+    if (response.status != 200) {
       this.logger.warn(
         `Could not find commits for branch ${targetBranch} - it likely does not exist.`
       );
       return null;
     }
-    const history = response.repository.ref.target.history;
-    const commits = (history.nodes || []) as GraphQLCommit[];
+    const commits : GraphQLCommit[] = [];
+
+    for (const commit of response.data) {
+      const prs: GraphQLPullRequest[] = [];
+      try {
+        let parameters = {commit_sha: commit.sha, owner: this.repository.owner, repo: this.repository.repo};
+        const commitPullRequest = await this.octokit.request('GET /repos/{owner}/{repo}/commits/{commit_sha}/pull', parameters);
+        let pr: PullRequestGitea = commitPullRequest.data;
+        prs.push({
+          number: pr.number,
+          title: pr.title,
+          baseRefName: pr.base.ref,
+          headRefName: pr.head.ref,
+          labels: {
+            nodes: pr.labels.map((label) => {
+              return {name: label.name};
+            })
+          },
+          body: pr.body || '',
+          mergeCommit: {oid: pr.merge_commit_sha || ''},
+          files: {nodes: [], pageInfo: {hasNextPage: false}},
+        })
+      } catch (e) {
+      }
+      const sha = commit.sha;
+      const message = commit.commit.message;
+      commits.push({sha, message, associatedPullRequests: {nodes: prs}});
+    }
+
     // Count the number of pull requests associated with each merge commit. This is
     // used in the next step to make sure we only find pull requests with a
     // merge commit that contain 1 merged commit.
@@ -543,7 +572,8 @@ export class GitHub {
       commitData.push(commit);
     }
     return {
-      pageInfo: history.pageInfo,
+      // pageInfo: history.pageInfo,
+      pageInfo: {hasNextPage: false, endCursor: undefined},
       data: commitData,
     };
   }
@@ -559,7 +589,7 @@ export class GitHub {
     this.logger.debug(`Backfilling file list for commit: ${sha}`);
     const files: string[] = [];
     for await (const resp of this.octokit.paginate.iterator(
-      'GET /repos/{owner}/{repo}/commits/{ref}',
+      'GET /repos/{owner}/{repo}/commits?sha={ref}',
       {
         owner: this.repository.owner,
         repo: this.repository.repo,
@@ -567,7 +597,7 @@ export class GitHub {
       }
     )) {
       // Paginate plugin doesn't have types for listing files on a commit
-      const data = resp.data as any as {files: {filename: string}[]};
+      const data = resp.data.at(0) as any as {files: {filename: string}[]};
       for (const f of data.files || []) {
         if (f.filename) {
           files.push(f.filename);
@@ -718,7 +748,7 @@ export class GitHub {
       for (const pull of pulls) {
         // The REST API does not have an option for "merged"
         // pull requests - they are closed with a `merged_at` timestamp
-        if (status !== 'MERGED' || pull.merged_at) {
+        if ((status !== 'MERGED' || pull.merged_at) && pull.base.ref === targetBranch) {
           results += 1;
           yield {
             headBranchName: pull.head.ref,
@@ -863,57 +893,33 @@ export class GitHub {
   private async releaseGraphQL(
     cursor?: string
   ): Promise<ReleaseHistory | null> {
-    this.logger.debug(`Fetching releases with cursor ${cursor}`);
-    const response = await this.graphqlRequest({
-      query: `query releases($owner: String!, $repo: String!, $num: Int!, $cursor: String) {
-        repository(owner: $owner, name: $repo) {
-          releases(first: $num, after: $cursor, orderBy: {field: CREATED_AT, direction: DESC}) {
-            nodes {
-              name
-              tag {
-                name
-              }
-              tagCommit {
-                oid
-              }
-              url
-              description
-              isDraft
-            }
-            pageInfo {
-              endCursor
-              hasNextPage
-            }
-          }
-        }
-      }`,
-      cursor,
-      owner: this.repository.owner,
-      repo: this.repository.repo,
-      num: 25,
-    });
-    if (!response.repository.releases.nodes.length) {
+    const response = await this.octokit.rest.repos.listReleases({owner: this.repository.owner, repo: this.repository.repo});
+
+    if (!response.data.length) {
       this.logger.warn('Could not find releases.');
       return null;
     }
-    const releases = response.repository.releases.nodes as GraphQLRelease[];
+    const releases = response.data as unknown as GraphQLRelease[];
     return {
-      pageInfo: response.repository.releases.pageInfo,
+      pageInfo: {
+        hasNextPage: false,
+        endCursor: undefined,
+      },
       data: releases
-        .filter(release => !!release.tagCommit)
-        .map(release => {
-          if (!release.tag || !release.tagCommit) {
-            this.logger.debug(release);
-          }
-          return {
-            name: release.name || undefined,
-            tagName: release.tag ? release.tag.name : 'unknown',
-            sha: release.tagCommit.oid,
-            notes: release.description,
-            url: release.url,
-            draft: release.isDraft,
-          } as GitHubRelease;
-        }),
+          .filter(release => !!release.target_commitish)
+          .map(release => {
+            if (!release.tag_name || !release.target_commitish) {
+              this.logger.debug(release);
+            }
+            return {
+              name: release.name || undefined,
+              tagName: release.tag_name ? release.tag_name : 'unknown',
+              sha: release.target_commitish,
+              notes: release.body,
+              url: release.url,
+              draft: release.draft,
+            } as GitHubRelease;
+          }),
     } as ReleaseHistory;
   }
 
@@ -1155,9 +1161,15 @@ export class GitHub {
         branch: pullRequest.headBranchName,
         description: pullRequest.body,
         primary: targetBranch,
+        username: this.repository.gitUsername!,
+        password: this.repository.gitPassword!,
         force: true,
         fork: !!options?.fork,
         message,
+        author: {
+          name: 'Gitea Actions [Bot]',
+          email: 'noreply@gitea.com',
+        },
         logger: this.logger,
         draft: !!options?.draft,
         labels: pullRequest.labels,
@@ -1238,9 +1250,15 @@ export class GitHub {
         branch: releasePullRequest.headRefName,
         description: body,
         primary: targetBranch,
+        username: this.repository.gitUsername!,
+        password: this.repository.gitPassword!,
         force: true,
-        fork: options?.fork === false ? false : true,
+        fork: options?.fork !== false,
         message,
+        author: {
+          name: 'Gitea Actions [Bot]',
+          email: 'git@3caravelle.com',
+        },
         logger: this.logger,
         draft: releasePullRequest.draft,
       });
@@ -1454,6 +1472,12 @@ export class GitHub {
       if (labels.length === 0) {
         return;
       }
+      //gitea utilizes ids to delete a label
+      let labelMap = new Map<string, number>();
+
+      (await this.getRepositoryLabels()).forEach(label => {
+        labelMap.set(label.name, label.id);
+      });
       this.logger.debug(`removing labels: ${labels} from issue/pull ${number}`);
       await Promise.all(
         labels.map(label =>
@@ -1461,7 +1485,8 @@ export class GitHub {
             owner: this.repository.owner,
             repo: this.repository.repo,
             issue_number: number,
-            name: label,
+            // @ts-ignore - types are incorrect
+            name: labelMap.get(label) || -1,
           })
         )
       );
@@ -1671,6 +1696,13 @@ export class GitHub {
     });
     this.logger.debug(`Updated branch: ${branchName} to ${sha}`);
     return sha;
+  }
+
+  async getRepositoryLabels() {
+    return (await this.octokit.request('GET /repos/{owner}/{repo}/labels', {
+      owner: this.repository.owner,
+      repo: this.repository.repo,
+    })).data;
   }
 }
 

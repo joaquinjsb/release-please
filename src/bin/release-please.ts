@@ -1,32 +1,35 @@
 #!/usr/bin/env node
-
-// Copyright 2019 Google LLC
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * // Copyright 2020 Google LLC
+ * //
+ * // Licensed under the Apache License, Version 2.0 (the "License");
+ * // you may not use this file except in compliance with the License.
+ * // You may obtain a copy of the License at
+ * //
+ * //     https://www.apache.org/licenses/LICENSE-2.0
+ * //
+ * // Unless required by applicable law or agreed to in writing, software
+ * // distributed under the License is distributed on an "AS IS" BASIS,
+ * // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * // See the License for the specific language governing permissions and
+ * // limitations under the License.
+ * //
+ * //Modifications made by Joaquin Santana on 19/11/24, 11:03
+ */
 
 import {coerceOption} from '../util/coerce-option';
 import * as yargs from 'yargs';
-import {GitHub, GH_API_URL, GH_GRAPHQL_URL} from '../github';
+import {GH_API_URL, GH_GRAPHQL_URL, GitHub} from '../github';
 import {Manifest, ManifestOptions, ROOT_PROJECT_PATH} from '../manifest';
-import {ChangelogSection, buildChangelogSections} from '../changelog-notes';
-import {logger, setLogger, CheckpointLogger} from '../util/logger';
+import {buildChangelogSections, ChangelogSection} from '../changelog-notes';
+import {CheckpointLogger, logger, setLogger} from '../util/logger';
 import {
-  getReleaserTypes,
-  ReleaseType,
-  VersioningStrategyType,
-  getVersioningStrategyTypes,
   ChangelogNotesType,
   getChangelogTypes,
+  getReleaserTypes,
+  getVersioningStrategyTypes,
+  ReleaseType,
+  VersioningStrategyType,
 } from '../factory';
 import {Bootstrapper} from '../bootstrapper';
 import {createPatch} from 'diff';
@@ -48,6 +51,8 @@ interface GitHubArgs {
   token?: string;
   apiUrl?: string;
   graphqlUrl?: string;
+  gitUsername?: string;
+  gitPassword?: string;
   fork?: boolean;
 
   // deprecated in favor of targetBranch
@@ -179,7 +184,14 @@ function gitHubOptions(yargs: yargs.Argv): yargs.Argv {
     })
     .option('repo-url', {
       describe: 'GitHub URL to generate release for',
-      demand: true,
+      demandOption: true,
+    })
+    .option('git-username', {
+      describe: 'Git SSH username to clone the repository',
+      demandOption: "an ssh username should be provided",
+    }).option('git-password', {
+      describe: 'Git SSH password to clone the repository',
+      demandOption: "an ssh password should be provided",
     })
     .option('dry-run', {
       describe: 'Prepare but do not take action',
@@ -193,6 +205,8 @@ function gitHubOptions(yargs: yargs.Argv): yargs.Argv {
       if (argv.token) argv.token = coerceOption(argv.token);
       if (argv.apiUrl) argv.apiUrl = coerceOption(argv.apiUrl);
       if (argv.graphqlUrl) argv.graphqlUrl = coerceOption(argv.graphqlUrl);
+      if (argv.gitUsername) argv.gitUsername = coerceOption(argv.gitUsername);
+      if (argv.gitPassword) argv.gitPassword = coerceOption(argv.gitPassword);
     });
 }
 
@@ -807,14 +821,15 @@ const debugConfigCommand: yargs.CommandModule<{}, DebugConfigArgs> = {
 
 async function buildGitHub(argv: GitHubArgs): Promise<GitHub> {
   const [owner, repo] = parseGithubRepoUrl(argv.repoUrl);
-  const github = await GitHub.create({
+  return await GitHub.create({
     owner,
     repo,
+    gitUsername: argv.gitUsername!,
+    gitPassword: argv.gitPassword!,
     token: argv.token!,
     apiUrl: argv.apiUrl,
     graphqlUrl: argv.graphqlUrl,
   });
-  return github;
 }
 
 export const parser = yargs

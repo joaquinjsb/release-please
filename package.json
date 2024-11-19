@@ -1,9 +1,11 @@
 {
-  "name": "release-please",
+  "name": "@joaquinjsb/release-please",
   "version": "16.15.0",
   "description": "generate release PRs based on the conventionalcommits.org spec",
   "main": "./build/src/index.js",
-  "bin": "./build/src/bin/release-please.js",
+  "bin": {
+    "release-please": "build/src/bin/release-please.js"
+  },
   "scripts": {
     "test": "cross-env ENVIRONMENT=test LC_ALL=en c8 mocha --node-option no-experimental-fetch --recursive --timeout=5000 build/test",
     "docs": "echo add docs tests",
@@ -21,7 +23,10 @@
     "!build/src/**/*.map",
     "schemas"
   ],
-  "repository": "googleapis/release-please",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/googleapis/release-please.git"
+  },
   "keywords": [
     "release",
     "conventional-commits"
@@ -29,16 +34,16 @@
   "author": "Google Inc.",
   "license": "Apache-2.0",
   "bugs": {
-    "url": "https://github.com/googleapis/release-please/issues"
+    "url": "https://github.com/joaquinjsb/release-please/issues"
   },
-  "homepage": "https://github.com/googleapis/release-please#readme",
+  "homepage": "https://github.com/joaquinjsb/release-please#readme",
   "config": {
     "snap-shot-it": {
       "sortSnapshots": true
     }
   },
   "devDependencies": {
-    "@octokit/types": "^9.0.0",
+    "@octokit/types": "^10.0.0",
     "@types/chai": "^4.1.7",
     "@types/diff": "^5.0.2",
     "@types/iarna__toml": "^2.0.1",
@@ -69,14 +74,14 @@
     "@conventional-commits/parser": "^0.4.1",
     "@google-automations/git-file-utils": "^2.0.0",
     "@iarna/toml": "^3.0.0",
+    "@joaquinjsb/code-suggester": "^4.3.4",
     "@octokit/graphql": "^5.0.0",
     "@octokit/request": "^6.0.0",
     "@octokit/request-error": "^3.0.0",
-    "@octokit/rest": "^19.0.0",
+    "@octokit/rest": "^19.0.5",
     "@types/npm-package-arg": "^6.1.0",
     "@xmldom/xmldom": "^0.8.4",
     "chalk": "^4.0.0",
-    "code-suggester": "^4.2.0",
     "conventional-changelog-conventionalcommits": "^6.0.0",
     "conventional-changelog-writer": "^6.0.0",
     "conventional-commits-filter": "^3.0.0",
@@ -100,5 +105,10 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "directories": {
+    "doc": "docs",
+    "test": "test"
+  },
+  "types": "./build/src/index.d.ts"
 }
