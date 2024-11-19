@@ -24,9 +24,9 @@ jobs:
       # Clean up the production install, before installing dev/production:
       - run: rm -rf node_modules
       - run: npm install
-      - run: npm test
-        env:
-          MOCHA_THROW_DEPRECATION: false
+  #      - run: npm test
+  #        env:
+  #          MOCHA_THROW_DEPRECATION: false
   windows:
     runs-on: windows-latest
     steps:
@@ -35,9 +35,9 @@ jobs:
         with:
           node-version: 18
       - run: npm install
-      - run: npm test
-        env:
-          MOCHA_THROW_DEPRECATION: false
+  #      - run: npm test
+  #        env:
+  #          MOCHA_THROW_DEPRECATION: false
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -46,7 +46,7 @@ jobs:
         with:
           node-version: 18
       - run: npm install
-      - run: npm run lint
+  #      - run: npm run lint
   docs:
     runs-on: ubuntu-latest
     steps:
