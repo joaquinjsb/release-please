@@ -134,20 +134,24 @@ interface CreatePullRequestArgs
     TaggingArgs {
   changelogType?: ChangelogNotesType;
 }
+
 interface CreateReleaseArgs
   extends GitHubArgs,
     ManifestArgs,
     ManifestConfigArgs,
     ReleaseArgs,
     TaggingArgs {}
+
 interface CreateManifestPullRequestArgs
   extends GitHubArgs,
     ManifestArgs,
     PullRequestArgs {}
+
 interface CreateManifestReleaseArgs
   extends GitHubArgs,
     ManifestArgs,
     ReleaseArgs {}
+
 interface BootstrapArgs
   extends GitHubArgs,
     ManifestArgs,
@@ -158,6 +162,7 @@ interface BootstrapArgs
     ReleaseArgs {
   initialVersion?: string;
 }
+
 interface DebugConfigArgs extends GitHubArgs, ManifestArgs {}
 
 function gitHubOptions(yargs: yargs.Argv): yargs.Argv {
@@ -188,10 +193,11 @@ function gitHubOptions(yargs: yargs.Argv): yargs.Argv {
     })
     .option('git-username', {
       describe: 'Git SSH username to clone the repository',
-      demandOption: "an ssh username should be provided",
-    }).option('git-password', {
+      demandOption: 'an ssh username should be provided',
+    })
+    .option('git-password', {
       describe: 'Git SSH password to clone the repository',
-      demandOption: "an ssh password should be provided",
+      demandOption: 'an ssh password should be provided',
     })
     .option('dry-run', {
       describe: 'Prepare but do not take action',
@@ -884,6 +890,7 @@ export const parser = yargs
 
 interface HandleError {
   (err: ErrorObject): void;
+
   logger?: Console;
   yargsArgs?: yargs.Arguments;
 }

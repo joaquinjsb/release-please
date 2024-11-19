@@ -54,12 +54,13 @@ import {Logger} from '@joaquinjsb/code-suggester/build/src/types';
 import {HttpsProxyAgent} from 'https-proxy-agent';
 import {HttpProxyAgent} from 'http-proxy-agent';
 import {PullRequestOverflowHandler} from './util/pull-request-overflow-handler';
-import {PullRequestGitea} from "./util/gitea";
+import {PullRequestGitea} from './util/gitea';
 
 // Extract some types from the `request` package.
 type RequestBuilderType = typeof request;
 type DefaultFunctionType = RequestBuilderType['defaults'];
 type RequestFunctionType = ReturnType<DefaultFunctionType>;
+
 export interface OctokitAPIs {
   graphql: Function;
   request: RequestFunctionType;
@@ -197,6 +198,7 @@ interface FileDiff {
   readonly content: string | null;
   readonly originalContent: string | null;
 }
+
 export type ChangeSet = Map<string, FileDiff>;
 
 interface CreatePullRequestOptions {
@@ -390,192 +392,13 @@ export class GitHub {
     }
   }
 
-  private async mergeCommitsGraphQL(
-    targetBranch: string,
-    cursor?: string,
-    options: CommitIteratorOptions = {}
-  ): Promise<CommitHistory | null> {
-    this.logger.debug(
-      `Fetching merge commits on branch ${targetBranch} with cursor: ${cursor}`
-    );
-    const query = `query pullRequestsSince($owner: String!, $repo: String!, $num: Int!, $maxFilesChanged: Int, $targetBranch: String!, $cursor: String) {
-      repository(owner: $owner, name: $repo) {
-        ref(qualifiedName: $targetBranch) {
-          target {
-            ... on Commit {
-              history(first: $num, after: $cursor) {
-                nodes {
-                  associatedPullRequests(first: 10) {
-                    nodes {
-                      number
-                      title
-                      baseRefName
-                      headRefName
-                      labels(first: 10) {
-                        nodes {
-                          name
-                        }
-                      }
-                      body
-                      mergeCommit {
-                        oid
-                      }
-                      files(first: $maxFilesChanged) {
-                        nodes {
-                          path
-                        }
-                        pageInfo {
-                          endCursor
-                          hasNextPage
-                        }
-                      }
-                    }
-                  }
-                  sha: oid
-                  message
-                }
-                pageInfo {
-                  hasNextPage
-                  endCursor
-                }
-              }
-            }
-          }
-        }
-      }
-    }`;
-    const params = {
-      cursor,
-      owner: this.repository.owner,
-      repo: this.repository.repo,
-      limit: options.maxResults,
-      targetBranch,
-      maxFilesChanged: 100, // max is 100
-    };
-    const response = await this.octokit.repos.listCommits({...params});
-
-    if (!response) {
-      this.logger.warn(
-        `Did not receive a response for query: ${query}`,
-        params
-      );
-      return null;
-    }
-
-    // if the branch does exist, return null
-    if (response.status != 200) {
-      this.logger.warn(
-        `Could not find commits for branch ${targetBranch} - it likely does not exist.`
-      );
-      return null;
-    }
-    const commits : GraphQLCommit[] = [];
-
-    for (const commit of response.data) {
-      const prs: GraphQLPullRequest[] = [];
-      try {
-        let parameters = {commit_sha: commit.sha, owner: this.repository.owner, repo: this.repository.repo};
-        const commitPullRequest = await this.octokit.request('GET /repos/{owner}/{repo}/commits/{commit_sha}/pull', parameters);
-        let pr: PullRequestGitea = commitPullRequest.data;
-        prs.push({
-          number: pr.number,
-          title: pr.title,
-          baseRefName: pr.base.ref,
-          headRefName: pr.head.ref,
-          labels: {
-            nodes: pr.labels.map((label) => {
-              return {name: label.name};
-            })
-          },
-          body: pr.body || '',
-          mergeCommit: {oid: pr.merge_commit_sha || ''},
-          files: {nodes: [], pageInfo: {hasNextPage: false}},
-        })
-      } catch (e) {
-      }
-      const sha = commit.sha;
-      const message = commit.commit.message;
-      commits.push({sha, message, associatedPullRequests: {nodes: prs}});
-    }
-
-    // Count the number of pull requests associated with each merge commit. This is
-    // used in the next step to make sure we only find pull requests with a
-    // merge commit that contain 1 merged commit.
-    const mergeCommitCount: Record<string, number> = {};
-    for (const commit of commits) {
-      for (const pr of commit.associatedPullRequests.nodes) {
-        if (pr.mergeCommit?.oid) {
-          mergeCommitCount[pr.mergeCommit.oid] ??= 0;
-          mergeCommitCount[pr.mergeCommit.oid]++;
-        }
-      }
-    }
-    const commitData: Commit[] = [];
-    for (const graphCommit of commits) {
-      const commit: Commit = {
-        sha: graphCommit.sha,
-        message: graphCommit.message,
-      };
-      const mergePullRequest = graphCommit.associatedPullRequests.nodes.find(
-        pr => {
-          return (
-            // Only match the pull request with a merge commit if there is a
-            // single merged commit in the PR. This means merge commits and squash
-            // merges will be matched, but rebase merged PRs will only be matched
-            // if they contain a single commit. This is so PRs that are rebased
-            // and merged will have ßSfiles backfilled from each commit instead of
-            // the whole PR.
-            pr.mergeCommit &&
-            pr.mergeCommit.oid === graphCommit.sha &&
-            mergeCommitCount[pr.mergeCommit.oid] === 1
-          );
-        }
-      );
-      const pullRequest =
-        mergePullRequest || graphCommit.associatedPullRequests.nodes[0];
-      if (pullRequest) {
-        commit.pullRequest = {
-          sha: commit.sha,
-          number: pullRequest.number,
-          baseBranchName: pullRequest.baseRefName,
-          headBranchName: pullRequest.headRefName,
-          mergeCommitOid: pullRequest.mergeCommit?.oid,
-          title: pullRequest.title,
-          body: pullRequest.body,
-          labels: pullRequest.labels.nodes.map(node => node.name),
-          files: (pullRequest.files?.nodes || []).map(node => node.path),
-        };
-      }
-      if (mergePullRequest) {
-        if (
-          mergePullRequest.files?.pageInfo?.hasNextPage &&
-          options.backfillFiles
-        ) {
-          this.logger.info(
-            `PR #${mergePullRequest.number} has many files, backfilling`
-          );
-          commit.files = await this.getCommitFiles(graphCommit.sha);
-        } else {
-          // We cannot directly fetch files on commits via graphql, only provide file
-          // information for commits with associated pull requests
-          commit.files = (mergePullRequest.files?.nodes || []).map(
-            node => node.path
-          );
-        }
-      } else if (options.backfillFiles) {
-        // In this case, there is no squashed merge commit. This could be a simple
-        // merge commit, a rebase merge commit, or a direct commit to the branch.
-        // Fallback to fetching the list of commits from the REST API. In the future
-        // we can perhaps lazy load these.
-        commit.files = await this.getCommitFiles(graphCommit.sha);
-      }
-      commitData.push(commit);
-    }
-    return {
-      // pageInfo: history.pageInfo,
-      pageInfo: {hasNextPage: false, endCursor: undefined},
-      data: commitData,
-    };
+  async getRepositoryLabels() {
+    return (
+      await this.octokit.request('GET /repos/{owner}/{repo}/labels', {
+        owner: this.repository.owner,
+        repo: this.repository.repo,
+      })
+    ).data;
   }
 
   /**
@@ -715,61 +538,198 @@ export class GitHub {
     }
   }
 
-  /**
-   * Helper implementation of pullRequestIterator that excludes files
-   * via the REST API.
-   *
-   * @param {string} targetBranch The base branch of the pull request
-   * @param {string} status The status of the pull request
-   * @param {number} maxResults Limit the number of results searched
-   */
-  private async *pullRequestIteratorWithoutFiles(
+  private async mergeCommitsGraphQL(
     targetBranch: string,
-    status: 'OPEN' | 'CLOSED' | 'MERGED' = 'MERGED',
-    maxResults: number = Number.MAX_SAFE_INTEGER
-  ): AsyncGenerator<PullRequest, void, void> {
-    const statusMap: Record<string, 'open' | 'closed'> = {
-      OPEN: 'open',
-      CLOSED: 'closed',
-      MERGED: 'closed',
-    };
-    let results = 0;
-    for await (const {data: pulls} of this.octokit.paginate.iterator(
-      'GET /repos/{owner}/{repo}/pulls',
-      {
-        state: statusMap[status],
-        owner: this.repository.owner,
-        repo: this.repository.repo,
-        base: targetBranch,
-        sort: 'updated',
-        direction: 'desc',
-      }
-    )) {
-      for (const pull of pulls) {
-        // The REST API does not have an option for "merged"
-        // pull requests - they are closed with a `merged_at` timestamp
-        if ((status !== 'MERGED' || pull.merged_at) && pull.base.ref === targetBranch) {
-          results += 1;
-          yield {
-            headBranchName: pull.head.ref,
-            baseBranchName: pull.base.ref,
-            number: pull.number,
-            title: pull.title,
-            body: pull.body || '',
-            labels: pull.labels.map(label => label.name),
-            files: [],
-            sha: pull.merge_commit_sha || undefined,
-          };
-          if (results >= maxResults) {
-            break;
+    cursor?: string,
+    options: CommitIteratorOptions = {}
+  ): Promise<CommitHistory | null> {
+    this.logger.debug(
+      `Fetching merge commits on branch ${targetBranch} with cursor: ${cursor}`
+    );
+    const query = `query pullRequestsSince($owner: String!, $repo: String!, $num: Int!, $maxFilesChanged: Int, $targetBranch: String!, $cursor: String) {
+      repository(owner: $owner, name: $repo) {
+        ref(qualifiedName: $targetBranch) {
+          target {
+            ... on Commit {
+              history(first: $num, after: $cursor) {
+                nodes {
+                  associatedPullRequests(first: 10) {
+                    nodes {
+                      number
+                      title
+                      baseRefName
+                      headRefName
+                      labels(first: 10) {
+                        nodes {
+                          name
+                        }
+                      }
+                      body
+                      mergeCommit {
+                        oid
+                      }
+                      files(first: $maxFilesChanged) {
+                        nodes {
+                          path
+                        }
+                        pageInfo {
+                          endCursor
+                          hasNextPage
+                        }
+                      }
+                    }
+                  }
+                  sha: oid
+                  message
+                }
+                pageInfo {
+                  hasNextPage
+                  endCursor
+                }
+              }
+            }
           }
         }
       }
+    }`;
+    const params = {
+      cursor,
+      owner: this.repository.owner,
+      repo: this.repository.repo,
+      limit: options.maxResults,
+      targetBranch,
+      maxFilesChanged: 100, // max is 100
+    };
+    const response = await this.octokit.repos.listCommits({...params});
 
-      if (results >= maxResults) {
-        break;
+    if (!response) {
+      this.logger.warn(
+        `Did not receive a response for query: ${query}`,
+        params
+      );
+      return null;
+    }
+
+    // if the branch does exist, return null
+    if (response.status !== 200) {
+      this.logger.warn(
+        `Could not find commits for branch ${targetBranch} - it likely does not exist.`
+      );
+      return null;
+    }
+    const commits: GraphQLCommit[] = [];
+
+    for (const commit of response.data) {
+      const prs: GraphQLPullRequest[] = [];
+      try {
+        let parameters = {
+          commit_sha: commit.sha,
+          owner: this.repository.owner,
+          repo: this.repository.repo,
+        };
+        const commitPullRequest = await this.octokit.request(
+          'GET /repos/{owner}/{repo}/commits/{commit_sha}/pull',
+          parameters
+        );
+        let pr: PullRequestGitea = commitPullRequest.data;
+        prs.push({
+          number: pr.number,
+          title: pr.title,
+          baseRefName: pr.base.ref,
+          headRefName: pr.head.ref,
+          labels: {
+            nodes: pr.labels.map(label => {
+              return {name: label.name};
+            }),
+          },
+          body: pr.body || '',
+          mergeCommit: {oid: pr.merge_commit_sha || ''},
+          files: {nodes: [], pageInfo: {hasNextPage: false}},
+        });
+      } catch (e) {}
+      const sha = commit.sha;
+      const message = commit.commit.message;
+      commits.push({sha, message, associatedPullRequests: {nodes: prs}});
+    }
+
+    // Count the number of pull requests associated with each merge commit. This is
+    // used in the next step to make sure we only find pull requests with a
+    // merge commit that contain 1 merged commit.
+    const mergeCommitCount: Record<string, number> = {};
+    for (const commit of commits) {
+      for (const pr of commit.associatedPullRequests.nodes) {
+        if (pr.mergeCommit?.oid) {
+          mergeCommitCount[pr.mergeCommit.oid] ??= 0;
+          mergeCommitCount[pr.mergeCommit.oid]++;
+        }
       }
     }
+    const commitData: Commit[] = [];
+    for (const graphCommit of commits) {
+      const commit: Commit = {
+        sha: graphCommit.sha,
+        message: graphCommit.message,
+      };
+      const mergePullRequest = graphCommit.associatedPullRequests.nodes.find(
+        pr => {
+          return (
+            // Only match the pull request with a merge commit if there is a
+            // single merged commit in the PR. This means merge commits and squash
+            // merges will be matched, but rebase merged PRs will only be matched
+            // if they contain a single commit. This is so PRs that are rebased
+            // and merged will have ßSfiles backfilled from each commit instead of
+            // the whole PR.
+            pr.mergeCommit &&
+            pr.mergeCommit.oid === graphCommit.sha &&
+            mergeCommitCount[pr.mergeCommit.oid] === 1
+          );
+        }
+      );
+      const pullRequest =
+        mergePullRequest || graphCommit.associatedPullRequests.nodes[0];
+      if (pullRequest) {
+        commit.pullRequest = {
+          sha: commit.sha,
+          number: pullRequest.number,
+          baseBranchName: pullRequest.baseRefName,
+          headBranchName: pullRequest.headRefName,
+          mergeCommitOid: pullRequest.mergeCommit?.oid,
+          title: pullRequest.title,
+          body: pullRequest.body,
+          labels: pullRequest.labels.nodes.map(node => node.name),
+          files: (pullRequest.files?.nodes || []).map(node => node.path),
+        };
+      }
+      if (mergePullRequest) {
+        if (
+          mergePullRequest.files?.pageInfo?.hasNextPage &&
+          options.backfillFiles
+        ) {
+          this.logger.info(
+            `PR #${mergePullRequest.number} has many files, backfilling`
+          );
+          commit.files = await this.getCommitFiles(graphCommit.sha);
+        } else {
+          // We cannot directly fetch files on commits via graphql, only provide file
+          // information for commits with associated pull requests
+          commit.files = (mergePullRequest.files?.nodes || []).map(
+            node => node.path
+          );
+        }
+      } else if (options.backfillFiles) {
+        // In this case, there is no squashed merge commit. This could be a simple
+        // merge commit, a rebase merge commit, or a direct commit to the branch.
+        // Fallback to fetching the list of commits from the REST API. In the future
+        // we can perhaps lazy load these.
+        commit.files = await this.getCommitFiles(graphCommit.sha);
+      }
+      commitData.push(commit);
+    }
+    return {
+      // pageInfo: history.pageInfo,
+      pageInfo: {hasNextPage: false, endCursor: undefined},
+      data: commitData,
+    };
   }
 
   /**
@@ -890,37 +850,64 @@ export class GitHub {
     }
   }
 
-  private async releaseGraphQL(
-    cursor?: string
-  ): Promise<ReleaseHistory | null> {
-    const response = await this.octokit.rest.repos.listReleases({owner: this.repository.owner, repo: this.repository.repo});
+  /**
+   * Helper implementation of pullRequestIterator that excludes files
+   * via the REST API.
+   *
+   * @param {string} targetBranch The base branch of the pull request
+   * @param {string} status The status of the pull request
+   * @param {number} maxResults Limit the number of results searched
+   */
+  private async *pullRequestIteratorWithoutFiles(
+    targetBranch: string,
+    status: 'OPEN' | 'CLOSED' | 'MERGED' = 'MERGED',
+    maxResults: number = Number.MAX_SAFE_INTEGER
+  ): AsyncGenerator<PullRequest, void, void> {
+    const statusMap: Record<string, 'open' | 'closed'> = {
+      OPEN: 'open',
+      CLOSED: 'closed',
+      MERGED: 'closed',
+    };
+    let results = 0;
+    for await (const {data: pulls} of this.octokit.paginate.iterator(
+      'GET /repos/{owner}/{repo}/pulls',
+      {
+        state: statusMap[status],
+        owner: this.repository.owner,
+        repo: this.repository.repo,
+        base: targetBranch,
+        sort: 'updated',
+        direction: 'desc',
+      }
+    )) {
+      for (const pull of pulls) {
+        // The REST API does not have an option for "merged"
+        // pull requests - they are closed with a `merged_at` timestamp
+        if (
+          (status !== 'MERGED' || pull.merged_at) &&
+          pull.base.ref === targetBranch
+        ) {
+          results += 1;
+          yield {
+            headBranchName: pull.head.ref,
+            baseBranchName: pull.base.ref,
+            number: pull.number,
+            title: pull.title,
+            body: pull.body || '',
+            labels: pull.labels.map(label => label.name),
+            files: [],
+            sha: pull.merge_commit_sha || undefined,
+          };
+          if (results >= maxResults) {
+            break;
+          }
+        }
+      }
 
-    if (!response.data.length) {
-      this.logger.warn('Could not find releases.');
-      return null;
+      if (results >= maxResults) {
+        break;
+      }
     }
-    const releases = response.data as unknown as GraphQLRelease[];
-    return {
-      pageInfo: {
-        hasNextPage: false,
-        endCursor: undefined,
-      },
-      data: releases
-          .filter(release => !!release.target_commitish)
-          .map(release => {
-            if (!release.tag_name || !release.target_commitish) {
-              this.logger.debug(release);
-            }
-            return {
-              name: release.name || undefined,
-              tagName: release.tag_name ? release.tag_name : 'unknown',
-              sha: release.target_commitish,
-              notes: release.body,
-              url: release.url,
-              draft: release.draft,
-            } as GitHubRelease;
-          }),
-    } as ReleaseHistory;
   }
 
   /**
@@ -1065,6 +1052,7 @@ export class GitHub {
       prefix
     );
   }
+
   /**
    * Returns a list of paths to all files matching a glob pattern.
    *
@@ -1698,11 +1686,40 @@ export class GitHub {
     return sha;
   }
 
-  async getRepositoryLabels() {
-    return (await this.octokit.request('GET /repos/{owner}/{repo}/labels', {
+  private async releaseGraphQL(
+    cursor?: string
+  ): Promise<ReleaseHistory | null> {
+    const response = await this.octokit.rest.repos.listReleases({
       owner: this.repository.owner,
       repo: this.repository.repo,
-    })).data;
+    });
+
+    if (!response.data.length) {
+      this.logger.warn('Could not find releases.');
+      return null;
+    }
+    const releases = response.data as unknown as GraphQLRelease[];
+    return {
+      pageInfo: {
+        hasNextPage: false,
+        endCursor: undefined,
+      },
+      data: releases
+        .filter(release => !!release.target_commitish)
+        .map(release => {
+          if (!release.tag_name || !release.target_commitish) {
+            this.logger.debug(release);
+          }
+          return {
+            name: release.name || undefined,
+            tagName: release.tag_name ? release.tag_name : 'unknown',
+            sha: release.target_commitish,
+            notes: release.body,
+            url: release.url,
+            draft: release.draft,
+          } as GitHubRelease;
+        }),
+    } as ReleaseHistory;
   }
 }
 

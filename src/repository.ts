@@ -20,6 +20,6 @@ export interface Repository {
   readonly owner: string;
   readonly repo: string;
   readonly gitUsername: string | undefined;
-  readonly gitPassword: string |undefined;
+  readonly gitPassword: string | undefined;
   readonly defaultBranch: string;
 }
