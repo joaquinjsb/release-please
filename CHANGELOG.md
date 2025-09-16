@@ -4,6 +4,13 @@
 
 [1]: https://www.npmjs.com/package/release-please?activeTab=versions
 
+## [16.16.0](https://github.com/joaquinjsb/release-please/compare/v16.15.3...v16.16.0) (2025-09-16)
+
+
+### Features
+
+* add release-please workflow for automated releases ([46a7242](https://github.com/joaquinjsb/release-please/commit/46a72429a246133629d97f1686a5a3cc281227d5))
+
 ## [16.15.0](https://github.com/googleapis/release-please/compare/v16.14.4...v16.15.0) (2024-11-13)
 
 
