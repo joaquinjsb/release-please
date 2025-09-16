@@ -1568,7 +1568,9 @@ function isPublishedVersion(strategy: Strategy, version: Version): boolean {
  * @param github GitHub client instance.
  * @param {string} targetBranch Name of the scanned branch.
  * @param releaseFilter Validator function for release version. Used to filter-out SNAPSHOT releases for Java strategy.
+ * @param config
  * @param {string} prefix Limit the release to a specific component.
+ * @param logger
  */
 async function latestReleaseVersion(
   github: GitHub,

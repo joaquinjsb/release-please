@@ -1295,65 +1295,19 @@ export class GitHub {
     this.logger.debug(
       `Fetching merge commits on branch ${targetBranch} with cursor: ${cursor}`
     );
-    const query = `query pullRequestsSince($owner: String!, $repo: String!, $num: Int!, $maxFilesChanged: Int, $targetBranch: String!, $cursor: String) {
-      repository(owner: $owner, name: $repo) {
-        ref(qualifiedName: $targetBranch) {
-          target {
-            ... on Commit {
-              history(first: $num, after: $cursor) {
-                nodes {
-                  associatedPullRequests(first: 10) {
-                    nodes {
-                      number
-                      title
-                      baseRefName
-                      headRefName
-                      labels(first: 10) {
-                        nodes {
-                          name
-                        }
-                      }
-                      body
-                      mergeCommit {
-                        oid
-                      }
-                      files(first: $maxFilesChanged) {
-                        nodes {
-                          path
-                        }
-                        pageInfo {
-                          endCursor
-                          hasNextPage
-                        }
-                      }
-                    }
-                  }
-                  sha: oid
-                  message
-                }
-                pageInfo {
-                  hasNextPage
-                  endCursor
-                }
-              }
-            }
-          }
-        }
-      }
-    }`;
     const params = {
-      cursor,
       owner: this.repository.owner,
       repo: this.repository.repo,
       limit: options.maxResults,
-      targetBranch,
-      maxFilesChanged: 100, // max is 100
+      page: cursor,
+      sha: targetBranch,
     };
+    // @ts-ignore
     const response = await this.octokit.repos.listCommits({...params});
 
     if (!response) {
       this.logger.warn(
-        `Did not receive a response for query: ${query}`,
+        `Did not receive a response for querying commits on branch ${targetBranch}: ${params}`,
         params
       );
       return null;
@@ -1457,10 +1411,21 @@ export class GitHub {
           this.logger.info(
             `PR #${mergePullRequest.number} has many files, backfilling`
           );
-          commit.files = await this.getCommitFiles(graphCommit.sha);
+          this.logger.debug(
+            `Backfilling file list for commit: ${graphCommit.sha}`
+          );
+          let found = response.data.find(
+            filter => filter.sha === graphCommit.sha
+          );
+          commit.files = found?.files
+            ? found.files.map(map => map.filename)
+            : undefined;
         } else {
           // We cannot directly fetch files on commits via graphql, only provide file
           // information for commits with associated pull requests
+          this.logger.debug(
+            `Backfilling file list for commit: ${graphCommit.sha}`
+          );
           commit.files = (mergePullRequest.files?.nodes || []).map(
             node => node.path
           );
@@ -1470,13 +1435,20 @@ export class GitHub {
         // merge commit, a rebase merge commit, or a direct commit to the branch.
         // Fallback to fetching the list of commits from the REST API. In the future
         // we can perhaps lazy load these.
-        commit.files = await this.getCommitFiles(graphCommit.sha);
+        let found = response.data.find(
+          filter => filter.sha === graphCommit.sha
+        );
+        commit.files = found?.files
+          ? found.files.map(map => map.filename)
+          : undefined;
       }
       commitData.push(commit);
     }
     return {
-      // pageInfo: history.pageInfo,
-      pageInfo: {hasNextPage: false, endCursor: undefined},
+      pageInfo: {
+        hasNextPage: response.headers['x-hasmore'] == 'true',
+        endCursor: String(Number(response.headers['x-page']) + 1),
+      },
       data: commitData,
     };
   }
