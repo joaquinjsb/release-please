@@ -4,6 +4,13 @@
 
 [1]: https://www.npmjs.com/package/release-please?activeTab=versions
 
+## [16.16.1](https://github.com/joaquinjsb/release-please/compare/v16.16.0...v16.16.1) (2025-09-16)
+
+
+### Bug Fixes
+
+* update npm publish command to remove access flag ([b3e45bc](https://github.com/joaquinjsb/release-please/commit/b3e45bcd8124b07d61f5d04dee64e6fb23f7513a))
+
 ## [16.16.0](https://github.com/joaquinjsb/release-please/compare/v16.15.3...v16.16.0) (2025-09-16)
 
 
