@@ -253,7 +253,12 @@ export class GitHub {
   static async create(options: GitHubCreateOptions): Promise<GitHub> {
     const apiUrl = options.apiUrl ?? GH_API_URL;
     const graphqlUrl = options.graphqlUrl ?? GH_GRAPHQL_URL;
-    const releasePleaseVersion = require('../../package.json').version;
+    let releasePleaseVersion: any;
+    try {
+      releasePleaseVersion = require('../../package.json').version;
+    } catch (e) {
+      releasePleaseVersion = require('../package.json').version;
+    }
     const apis = options.octokitAPIs ?? {
       octokit: new Octokit({
         baseUrl: apiUrl,
