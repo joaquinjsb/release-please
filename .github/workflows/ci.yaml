@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node: [18, 20]
+        node: [ 18, 20 ]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v3
@@ -64,7 +64,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: googleapis/release-please-action
+          repository: joaquinjsb/gitea-release-please-action
           ref: main
       - uses: actions/setup-node@v3
         with:
