@@ -4,6 +4,13 @@
 
 [1]: https://www.npmjs.com/package/release-please?activeTab=versions
 
+## [16.16.3](https://github.com/joaquinjsb/release-please/compare/v16.16.2...v16.16.3) (2025-09-16)
+
+
+### Bug Fixes
+
+* update release-please workflow to install latest npm version ([78c265b](https://github.com/joaquinjsb/release-please/commit/78c265bc591e990f9837e645675f3ae6b77056cb))
+
 ## [16.16.2](https://github.com/joaquinjsb/release-please/compare/v16.16.1...v16.16.2) (2025-09-16)
 
 
