@@ -1,6 +1,6 @@
 {
   "name": "@joaquinjsb/release-please",
-  "version": "16.16.3",
+  "version": "16.15.4",
   "description": "generate release PRs based on the conventionalcommits.org spec",
   "main": "./build/src/index.js",
   "bin": {
