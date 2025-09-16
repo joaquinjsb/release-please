@@ -25,5 +25,7 @@ jobs:
         if: ${{ steps.release.outputs.release_created }}
       - run: npm ci
         if: ${{ steps.release.outputs.release_created }}
+      - name: Update npm
+        run: npm install -g npm@latest
       - run: npm publish --access public
         if: ${{ steps.release.outputs.release_created }}
