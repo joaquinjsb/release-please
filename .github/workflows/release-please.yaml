@@ -25,5 +25,5 @@ jobs:
         if: ${{ steps.release.outputs.release_created }}
       - run: npm ci
         if: ${{ steps.release.outputs.release_created }}
-      - run: npm publish
+      - run: npm publish --access public
         if: ${{ steps.release.outputs.release_created }}
