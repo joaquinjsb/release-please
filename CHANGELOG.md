@@ -4,6 +4,13 @@
 
 [1]: https://www.npmjs.com/package/release-please?activeTab=versions
 
+## [16.16.4](https://github.com/joaquinjsb/release-please/compare/v16.16.3...v16.16.4) (2025-09-16)
+
+
+### Bug Fixes
+
+* update repository URL in package.json ([f9e8e95](https://github.com/joaquinjsb/release-please/commit/f9e8e95ea8c7912323cea10e603470b5b1bbc356))
+
 ## [16.16.3](https://github.com/joaquinjsb/release-please/compare/v16.16.2...v16.16.3) (2025-09-16)
 
 
