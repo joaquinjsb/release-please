@@ -4,6 +4,13 @@
 
 [1]: https://www.npmjs.com/package/release-please?activeTab=versions
 
+## [16.15.5](https://github.com/joaquinjsb/release-please/compare/v16.15.4...v16.15.5) (2025-09-16)
+
+
+### Bug Fixes
+
+* when developing on IDE, can't resolve package.json ([061420a](https://github.com/joaquinjsb/release-please/commit/061420a207192cd219d78c6241e56a7ebedf3ecf))
+
 ## [16.15.4](https://github.com/joaquinjsb/release-please/compare/v16.15.4...v16.15.4) (2025-09-16)
 
 
