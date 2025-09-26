@@ -1088,7 +1088,7 @@ export class GitHub {
         message,
         author: {
           name: 'Gitea Actions [Bot]',
-          email: 'git@3caravelle.com',
+          email: 'git@gitea.com',
         },
         logger: this.logger,
         draft: releasePullRequest.draft,
