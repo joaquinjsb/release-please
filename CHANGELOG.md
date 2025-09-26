@@ -4,6 +4,13 @@
 
 [1]: https://www.npmjs.com/package/release-please?activeTab=versions
 
+## [16.15.6](https://github.com/joaquinjsb/release-please/compare/v16.15.5...v16.15.6) (2025-09-26)
+
+
+### Bug Fixes
+
+* author email in github.ts ([0b59f7f](https://github.com/joaquinjsb/release-please/commit/0b59f7f8b01eccb64977260452a6326bfac9cc8b))
+
 ## [16.15.5](https://github.com/joaquinjsb/release-please/compare/v16.15.4...v16.15.5) (2025-09-16)
 
 
